@@ -3,26 +3,51 @@ package com.authentication.server.service;
 import com.authentication.server.config.JwtProperties;
 import com.authentication.server.entity.User;
 import com.authentication.server.exception.UnauthorizedException;
-import com.authentication.server.security.JwtUtil;
-import io.jsonwebtoken.Claims;
-import java.util.HashMap;
-import java.util.Map;
+import com.authentication.server.security.JwtKeyManager;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class TokenService {
 
-    private final JwtUtil jwtUtil;
+    private final JwtEncoder jwtEncoder;
+    private final JwtDecoder jwtDecoder;
+    private final JwtKeyManager jwtKeyManager;
     private final JwtProperties jwtProperties;
 
     public String generateAccessToken(User user) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("email", user.getEmail());
-        claims.put("role", user.getRole());
-        return jwtUtil.generateToken(user.getId().toString(), claims, jwtProperties.getAccessTokenExpiry(), null);
+        String issuer = requireIssuer();
+        String audience = requireAudience();
+
+        Instant now = Instant.now();
+        Instant exp = now.plusMillis(jwtProperties.getAccessTokenExpiry());
+
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(issuer)
+                .audience(List.of(audience))
+                .issuedAt(now)
+                .expiresAt(exp)
+                .subject(user.getId().toString())
+                .claim("email", user.getEmail())
+                .claim("role", user.getRole())
+                .build();
+
+        JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256)
+                .keyId(jwtKeyManager.getKid())
+                .build();
+
+        return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 
     public long accessTokenExpiresInSeconds() {
@@ -30,36 +55,79 @@ public class TokenService {
     }
 
     public String generateRefreshToken(User user) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("token_use", "refresh");
         String jti = UUID.randomUUID().toString();
-        return jwtUtil.generateToken(user.getId().toString(), claims, jwtProperties.getRefreshTokenExpiry(), jti);
+        String issuer = requireIssuer();
+        String audience = requireAudience();
+
+        Instant now = Instant.now();
+        Instant exp = now.plusMillis(jwtProperties.getRefreshTokenExpiry());
+
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(issuer)
+                .audience(List.of(audience))
+                .issuedAt(now)
+                .expiresAt(exp)
+                .subject(user.getId().toString())
+                .id(jti)
+                .claim("token_use", "refresh")
+                .build();
+
+        JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256)
+                .keyId(jwtKeyManager.getKid())
+                .build();
+
+        return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 
     public UUID validateAndExtractUserIdFromRefreshToken(String refreshTokenJwt) {
-        Claims claims;
+        Jwt jwt;
         try {
-            claims = jwtUtil.parseAndValidate(refreshTokenJwt);
+            jwt = jwtDecoder.decode(refreshTokenJwt);
         } catch (Exception e) {
             throw new UnauthorizedException("Invalid refresh token");
         }
 
-        if (!"refresh".equals(String.valueOf(claims.get("token_use")))) {
+        if (!"refresh".equals(jwt.getClaimAsString("token_use"))) {
             throw new UnauthorizedException("Invalid refresh token");
         }
 
         try {
-            return UUID.fromString(claims.getSubject());
+            return UUID.fromString(jwt.getSubject());
         } catch (Exception e) {
             throw new UnauthorizedException("Invalid refresh token");
         }
     }
 
     public String extractUserId(String token) {
-        return jwtUtil.extractSubject(token);
+        try {
+            return jwtDecoder.decode(token).getSubject();
+        } catch (Exception e) {
+            throw new UnauthorizedException("Invalid token");
+        }
     }
 
     public boolean validateToken(String token) {
-        return jwtUtil.validateToken(token);
+        try {
+            jwtDecoder.decode(token);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String requireIssuer() {
+        String issuer = jwtProperties.getIssuer();
+        if (issuer == null || issuer.isBlank()) {
+            throw new IllegalStateException("JWT issuer is not configured (jwt.issuer)");
+        }
+        return issuer;
+    }
+
+    private String requireAudience() {
+        String audience = jwtProperties.getAudience();
+        if (audience == null || audience.isBlank()) {
+            throw new IllegalStateException("JWT audience is not configured (jwt.audience)");
+        }
+        return audience;
     }
 }

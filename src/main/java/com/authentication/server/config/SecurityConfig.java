@@ -34,7 +34,7 @@ public class SecurityConfig {
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         // Accept raw token values (SPA reads cookie and sends X-XSRF-TOKEN).
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
-                        // Allow login without CSRF; refresh/logout require CSRF.
+                        // Allow login without CSRF --> refresh/logout require CSRF.
                         .ignoringRequestMatchers(request -> HttpMethod.POST.matches(request.getMethod())
                                 && ("/api/auth/login".equals(request.getRequestURI())
                                         || "/api/auth/signup".equals(request.getRequestURI()))))

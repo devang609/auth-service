@@ -1,5 +1,6 @@
 HELP.md
 target/
+.m2/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -36,6 +37,8 @@ build/
 .env
 keys/
 scripts/keys/
-/.m2
 /scripts
 /.jshell-prefs
+
+For Prod
+/resources/db/migration/V1__init_schema.sql

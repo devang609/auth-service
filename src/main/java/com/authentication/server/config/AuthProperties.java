@@ -1,5 +1,6 @@
 package com.authentication.server.config;
 
+import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -9,6 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AuthProperties {
 
     //Add roles u want to allow
-    private List<String> allowedRoles = List.of("ADMIN", "USER");
+    private List<String> allowedRoles = new ArrayList<>();
 }
 

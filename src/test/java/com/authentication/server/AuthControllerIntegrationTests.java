@@ -9,13 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.authentication.server.security.JwtKeyManager;
-import io.jsonwebtoken.Jwts;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -47,14 +48,11 @@ class AuthControllerIntegrationTests {
                 .readTree(result.getResponse().getContentAsString())
                 .get("access_token")
                 .asText();
-        var parsed = Jwts.parser()
-                .verifyWith(jwtKeyManager.getPublicKey())
-                .build()
-                .parseSignedClaims(accessToken);
+        Jwt parsed = jwtDecoder.decode(accessToken);
 
-        assertThat(parsed.getHeader().get("kid")).isEqualTo(jwtKeyManager.getKid());
-        assertThat(parsed.getPayload().get("email")).isEqualTo("test@example.com");
-        assertThat(parsed.getPayload().get("role")).isEqualTo("USER");
+        assertThat(parsed.getHeaders().get("kid")).isEqualTo(jwtKeyManager.getKid());
+        assertThat(parsed.getClaims().get("email")).isEqualTo("test@example.com");
+        assertThat(parsed.getClaims().get("role")).isEqualTo("USER");
     }
 
     @Test
@@ -161,6 +159,9 @@ class AuthControllerIntegrationTests {
 
     @Autowired
     private JwtKeyManager jwtKeyManager;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     private static String extractCookieValue(List<String> setCookieHeaders, String cookieName) {
         if (setCookieHeaders == null) {

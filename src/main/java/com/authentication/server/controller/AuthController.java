@@ -1,6 +1,7 @@
 package com.authentication.server.controller;
 
 import com.authentication.server.dto.request.LoginRequest;
+import com.authentication.server.dto.request.SignupRequest;
 import com.authentication.server.dto.response.TokenResponse;
 import com.authentication.server.service.AuthResult;
 import com.authentication.server.service.AuthService;
@@ -25,6 +26,16 @@ public class AuthController {
     private final AuthService authService;
     private final CookieUtil cookieUtil;
 
+    @PostMapping("/signup")
+    public ResponseEntity<TokenResponse> signup(
+            @Valid @RequestBody SignupRequest signupRequest,
+            HttpServletResponse response
+    ) {
+        AuthResult result = authService.signup(signupRequest);
+        cookieUtil.setRefreshTokenCookie(response, result.refreshTokenValue());
+        return ResponseEntity.ok(result.tokenResponse());
+    }
+
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(
             @Valid @RequestBody LoginRequest loginRequest,
@@ -44,9 +55,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-        String refreshToken = cookieUtil.extractRefreshTokenFromCookie(request);
-        authService.logout(refreshToken);
+    public ResponseEntity<Void> logout(HttpServletResponse response) {
         cookieUtil.clearRefreshTokenCookie(response);
         return ResponseEntity.noContent().build();
     }

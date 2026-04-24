@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Data
 public class JwtProperties {
 
-    private String secret;
+    private String privateKeyPath;
+    private String publicKeyPath;
     private String issuer;
     private String audience;
 

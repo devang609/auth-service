@@ -9,6 +9,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Data
 public class CorsProperties {
 
-    /** Comma-separated list supported via Spring Binder */
+    // Comma-separated list supported
     private List<String> allowedOrigins = new ArrayList<>();
 }

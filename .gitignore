@@ -31,3 +31,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local secrets / key material
+.env
+keys/
+scripts/keys/
+/.m2
+/scripts
+/.jshell-prefs

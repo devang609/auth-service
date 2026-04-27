@@ -42,3 +42,5 @@ scripts/keys/
 
 For Prod
 /resources/db/migration/V1__init_schema.sql
+
+.env

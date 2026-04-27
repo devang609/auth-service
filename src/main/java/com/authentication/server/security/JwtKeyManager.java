@@ -3,9 +3,11 @@ package com.authentication.server.security;
 import com.authentication.server.config.JwtProperties;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,6 +28,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class JwtKeyManager {
 
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
+
     private final JwtProperties jwtProperties;
 
     @Getter
@@ -43,27 +49,20 @@ public class JwtKeyManager {
     @jakarta.annotation.PostConstruct
     void init() {
         if (jwtProperties.getPrivateKeyPath() == null || jwtProperties.getPrivateKeyPath().isBlank()) {
-            throw new IllegalStateException("JWT private key path is not configured (jwt.private-key-path)");
+            throw new IllegalStateException("JWT private key URL is not configured (jwt.private-key-path)");
         }
         if (jwtProperties.getPublicKeyPath() == null || jwtProperties.getPublicKeyPath().isBlank()) {
-            throw new IllegalStateException("JWT public key path is not configured (jwt.public-key-path)");
+            throw new IllegalStateException("JWT public key URL is not configured (jwt.public-key-path)");
         }
 
         try {
-            Path publicPath = Path.of(jwtProperties.getPublicKeyPath()).toAbsolutePath().normalize();
-            Path privatePath = Path.of(jwtProperties.getPrivateKeyPath()).toAbsolutePath().normalize();
+            String publicKeyUrl = jwtProperties.getPublicKeyPath().trim();
+            String privateKeyUrl = jwtProperties.getPrivateKeyPath().trim();
 
-            if (!Files.exists(publicPath)) {
-                throw new IllegalStateException("JWT public key not found at: " + publicPath);
-            }
-            if (!Files.exists(privatePath)) {
-                throw new IllegalStateException("JWT private key not found at: " + privatePath);
-            }
-
-            byte[] publicDer = readPemDerBytes(publicPath, "PUBLIC KEY");
+            byte[] publicDer = readPemDerBytesFromUrl(publicKeyUrl, "PUBLIC KEY");
             this.publicKey = (RSAPublicKey) readPublicKey(publicDer);
 
-            byte[] privateDer = readPemDerBytes(privatePath, "PRIVATE KEY");
+            byte[] privateDer = readPemDerBytesFromUrl(privateKeyUrl, "PRIVATE KEY");
             this.privateKey = readPrivateKey(privateDer);
 
             this.kid = computeKid(publicDer);
@@ -76,15 +75,37 @@ public class JwtKeyManager {
         }
     }
 
-    private static byte[] readPemDerBytes(Path path, String pemLabel) throws IOException {
-        String pem = Files.readString(path, StandardCharsets.US_ASCII);
+    private static byte[] readPemDerBytesFromUrl(String location, String pemLabel) throws IOException, InterruptedException {
+        URI uri;
+        try {
+            uri = URI.create(location);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException("Invalid JWT key URL: " + location, ex);
+        }
+
+        String scheme = uri.getScheme();
+        if (scheme == null || (!scheme.equalsIgnoreCase("https") && !scheme.equalsIgnoreCase("http"))) {
+            throw new IllegalStateException("JWT key URL must use HTTP or HTTPS: " + location);
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .GET()
+                .header("Accept", "application/x-pem-file,text/plain,*/*")
+                .build();
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.US_ASCII));
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("Failed to fetch JWT key from URL: " + location + " (status " + response.statusCode() + ")");
+        }
+
+        String pem = response.body();
         String begin = "-----BEGIN " + pemLabel + "-----";
         String end = "-----END " + pemLabel + "-----";
 
         int beginIdx = pem.indexOf(begin);
         int endIdx = pem.indexOf(end);
         if (beginIdx < 0 || endIdx < 0 || endIdx <= beginIdx) {
-            throw new IllegalArgumentException("Invalid PEM format for " + path);
+            throw new IllegalArgumentException("Invalid PEM format from " + location);
         }
 
         String base64 = pem.substring(beginIdx + begin.length(), endIdx)

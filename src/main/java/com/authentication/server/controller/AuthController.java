@@ -3,6 +3,7 @@ package com.authentication.server.controller;
 import com.authentication.server.dto.request.LoginRequest;
 import com.authentication.server.dto.request.SignupRequest;
 import com.authentication.server.dto.response.TokenResponse;
+import com.authentication.server.exception.UnauthorizedException;
 import com.authentication.server.service.AuthResult;
 import com.authentication.server.service.AuthService;
 import com.authentication.server.util.CookieUtil;
@@ -32,6 +33,7 @@ public class AuthController {
             HttpServletResponse response
     ) {
         AuthResult result = authService.signup(signupRequest);
+        cookieUtil.setAccessTokenCookie(response, result.tokenResponse().getAccessToken());
         cookieUtil.setRefreshTokenCookie(response, result.refreshTokenValue());
         return ResponseEntity.ok(result.tokenResponse());
     }
@@ -42,6 +44,7 @@ public class AuthController {
             HttpServletResponse response
     ) {
         AuthResult result = authService.login(loginRequest);
+        cookieUtil.setAccessTokenCookie(response, result.tokenResponse().getAccessToken());
         cookieUtil.setRefreshTokenCookie(response, result.refreshTokenValue());
         return ResponseEntity.ok(result.tokenResponse());
     }
@@ -50,12 +53,21 @@ public class AuthController {
     public ResponseEntity<TokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
         String refreshToken = cookieUtil.extractRefreshTokenFromCookie(request);
         AuthResult result = authService.refreshAccessToken(refreshToken);
+        cookieUtil.setAccessTokenCookie(response, result.tokenResponse().getAccessToken());
         cookieUtil.setRefreshTokenCookie(response, result.refreshTokenValue());
         return ResponseEntity.ok(result.tokenResponse());
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletResponse response) {
+    public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = null;
+        try {
+            refreshToken = cookieUtil.extractRefreshTokenFromCookie(request);
+        } catch (UnauthorizedException ignored) {
+            // Logout is idempotent: if cookie is missing/invalid, still clear browser cookies.
+        }
+        authService.logout(refreshToken);
+        cookieUtil.clearAccessTokenCookie(response);
         cookieUtil.clearRefreshTokenCookie(response);
         return ResponseEntity.noContent().build();
     }

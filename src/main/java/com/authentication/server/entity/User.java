@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -43,6 +44,9 @@ public class User {
 
     @Column(nullable = false, length = 50)
     private String role;
+
+    @Column(name = "token_valid_after", nullable = false)
+    private Instant tokenValidAfter = Instant.EPOCH;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

@@ -8,6 +8,8 @@ import com.authentication.server.entity.User;
 import com.authentication.server.exception.BadRequestException;
 import com.authentication.server.exception.UnauthorizedException;
 import java.security.SecureRandom;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -46,6 +48,7 @@ public class AuthService {
         user.setUsername(generateUniqueUsername(email));
         user.setPasswordHash(passwordEncoder.encode(signupRequest.getPassword()));
         user.setRole(role);
+        user.setTokenValidAfter(Instant.EPOCH);
 
         try {
             user = userService.save(user);
@@ -108,6 +111,30 @@ public class AuthService {
                 .build();
 
         return new AuthResult(response, newRefreshTokenJwt);
+    }
+
+    @Transactional
+    public void logout(String refreshTokenValue) {
+        if (refreshTokenValue == null || refreshTokenValue.isBlank()) {
+            return;
+        }
+
+        try {
+            var userId = tokenService.validateAndExtractUserIdFromRefreshToken(refreshTokenValue);
+            User user = userService.findById(userId).orElse(null);
+            if (user == null) {
+                return;
+            }
+
+            user.setTokenValidAfter(revocationInstant());
+            userService.save(user);
+        } catch (UnauthorizedException ignored) {
+            // Logout is idempotent.
+        }
+    }
+
+    private static Instant revocationInstant() {
+        return Instant.now().truncatedTo(ChronoUnit.SECONDS).plusSeconds(1);
     }
 
     private void validateRoleAllowed(String role) {

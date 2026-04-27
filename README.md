@@ -9,7 +9,7 @@ Simple Spring Boot authentication service with JWT access tokens, refresh-token 
 - HttpOnly refresh-token cookie flow
 - Token refresh and logout endpoints
 - Public JWKS endpoint for downstream services
-- OpenAPI + Swagger UI (enabled in dev, disabled by default in prod)
+- OpenAPI + Swagger UI (available in dev when `springdoc` dependency is enabled; disabled by default in prod)
 
 ## Tech Stack
 
@@ -46,6 +46,15 @@ Simple Spring Boot authentication service with JWT access tokens, refresh-token 
 Important:
 - The service currently fetches keys over HTTP(S) from those URLs.
 - Do not commit `.env`.
+- Local `spring-boot:run` does **not** automatically load `.env` (the `spring.config.import` line is commented out in [src/main/resources/application.properties](src/main/resources/application.properties)).
+	- For `prod`, it is imported automatically or import it by custom Docker run command. For `dev`, uncomment `spring.config.import=optional:file:./.env[.properties]`.
+
+## Dev-only Dependencies
+
+Some dependencies are intentionally grouped under a single `DEV-ONLY` comment block in [pom.xml](pom.xml) so they can be toggled for production by commenting/uncommenting that whole block:
+
+- OpenAPI/Swagger UI (`springdoc-openapi-starter-webmvc-ui`)
+- Test stack (`spring-boot-starter-test`, `h2`)
 
 ## Run Locally
 
@@ -80,12 +89,12 @@ docker run --rm -p 8080:8080 --env-file .env auth-service:latest
 For GHCR image:
 
 ```bash
-docker run --rm -p 8080:8080 --env-file .env ghcr.io/devang609/auth-service:latest
+docker run --rm -p 8080:8080 --env-file .env ghcr.io/<github-username>/auth-service:latest
 ```
 
 ## API Documentation
 
-When enabled (dev profile), OpenAPI docs are available at:
+When enabled (dev profile *and* the `springdoc` dependency is enabled), OpenAPI docs are available at:
 
 - OpenAPI JSON: `/v3/api-docs`
 - Swagger UI: `/swagger-ui/index.html`
@@ -222,6 +231,29 @@ Successful auth endpoints return:
 - Keep private key sources protected and access-controlled.
 - Use HTTPS in all environments.
 - In production, keep `REFRESH_TOKEN_COOKIE_SECURE=true` and a strict CORS origin list.
+
+## Security Configuration (Current Behavior)
+
+- **Token transport:** access token is accepted from the `access_token` cookie first, then falls back to `Authorization: Bearer ...` (see `CookieBearerTokenResolver`).
+- **Cookies:** both refresh and access cookies are `HttpOnly=true`; `Secure`, `SameSite`, `Path`, and `Max-Age` are driven by configuration.
+- **CSRF:** enabled via `CookieCsrfTokenRepository` (SPA reads `XSRF-TOKEN` cookie and sends `X-XSRF-TOKEN` header). CSRF is bypassed only for `POST /api/auth/login` and `POST /api/auth/signup`; refresh/logout still require CSRF.
+- **CORS:** credentials allowed; `Set-Cookie` exposed; allowed methods are `GET, POST, OPTIONS`; allowed headers include `Content-Type`, `Authorization`, and `X-XSRF-TOKEN`.
+- **Public endpoints:** `/api/health`, `/.well-known/jwks.json`, Swagger/OpenAPI paths, and auth endpoints are public; all other endpoints require authentication.
+- **JWT validation:** issuer (`jwt.issuer`) and audience (`jwt.audience`) are validated, and tokens are rejected if revoked via `token_valid_after`.
+
+## Configuration Reference (Key Security/Runtime Settings)
+
+These are configured via Spring properties mapped from environment variables in [src/main/resources/application.properties](src/main/resources/application.properties) and exemplified in [.env.example](.env.example):
+
+- JWT keys: `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` (HTTP(S) raw PEM URLs)
+- JWT claims/expiry: `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ACCESS_TOKEN_EXPIRY_MS`, `JWT_REFRESH_TOKEN_EXPIRY_MS`
+- Allowed signup roles: `AUTH_ALLOWED_ROLES`
+- CORS: `CORS_ALLOWED_ORIGINS` (supports `*`)
+- Cookie controls:
+	- Refresh: `REFRESH_TOKEN_COOKIE_NAME`, `REFRESH_TOKEN_COOKIE_PATH`, `REFRESH_TOKEN_COOKIE_MAX_AGE`, `REFRESH_TOKEN_COOKIE_SECURE`, `REFRESH_TOKEN_COOKIE_SAME_SITE`
+	- Access: `ACCESS_TOKEN_COOKIE_NAME`, `ACCESS_TOKEN_COOKIE_PATH`, `ACCESS_TOKEN_COOKIE_MAX_AGE`, `ACCESS_TOKEN_COOKIE_SECURE`, `ACCESS_TOKEN_COOKIE_SAME_SITE`
+
+Not everything security-related is `.env` controlled (for example: the CSRF bypass rules, which endpoints are `permitAll`, and the fixed CORS method/header allowlist are defined in code in `SecurityConfig`).
 
 ## Contributing
 

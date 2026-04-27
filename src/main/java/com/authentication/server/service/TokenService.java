@@ -5,6 +5,7 @@ import com.authentication.server.entity.User;
 import com.authentication.server.exception.UnauthorizedException;
 import com.authentication.server.security.JwtKeyManager;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -30,13 +31,13 @@ public class TokenService {
         String issuer = requireIssuer();
         String audience = requireAudience();
 
-        Instant now = Instant.now();
-        Instant exp = now.plusMillis(jwtProperties.getAccessTokenExpiry());
+        Instant issuedAt = computeIssuedAt(user);
+        Instant exp = issuedAt.plusMillis(jwtProperties.getAccessTokenExpiry());
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(issuer)
                 .audience(List.of(audience))
-                .issuedAt(now)
+                .issuedAt(issuedAt)
                 .expiresAt(exp)
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
@@ -59,13 +60,13 @@ public class TokenService {
         String issuer = requireIssuer();
         String audience = requireAudience();
 
-        Instant now = Instant.now();
-        Instant exp = now.plusMillis(jwtProperties.getRefreshTokenExpiry());
+        Instant issuedAt = computeIssuedAt(user);
+        Instant exp = issuedAt.plusMillis(jwtProperties.getRefreshTokenExpiry());
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(issuer)
                 .audience(List.of(audience))
-                .issuedAt(now)
+                .issuedAt(issuedAt)
                 .expiresAt(exp)
                 .subject(user.getId().toString())
                 .id(jti)
@@ -129,5 +130,14 @@ public class TokenService {
             throw new IllegalStateException("JWT audience is not configured (jwt.audience)");
         }
         return audience;
+    }
+
+    private static Instant computeIssuedAt(User user) {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant validAfter = user.getTokenValidAfter() == null
+                ? Instant.EPOCH
+                : user.getTokenValidAfter().truncatedTo(ChronoUnit.SECONDS);
+
+        return now.isBefore(validAfter) ? validAfter : now;
     }
 }

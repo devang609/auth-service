@@ -73,7 +73,7 @@
 		</dependency>
 
 		<!-- DEV-ONLY (toggle for production by commenting/uncommenting this whole block) -->
-		<!--
+		
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
@@ -89,7 +89,7 @@
 			<artifactId>h2</artifactId>
 			<scope>test</scope>
 		</dependency>
-		-->
+		
 
 	</dependencies>
 

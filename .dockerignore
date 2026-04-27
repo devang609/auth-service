@@ -1,0 +1,16 @@
+# Ignore everything by default, then allow only build-required files.
+**
+
+# Maven project descriptor
+!pom.xml
+
+
+# Application source and resources
+!src/
+!src/**
+
+# Optional: keep wrapper metadata available (harmless if unused)
+!.mvn/
+!.mvn/**
+!mvnw
+!mvnw.cmd

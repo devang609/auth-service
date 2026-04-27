@@ -10,7 +10,3 @@
 !src/**
 
 # Optional: keep wrapper metadata available (harmless if unused)
-!.mvn/
-!.mvn/**
-!mvnw
-!mvnw.cmd

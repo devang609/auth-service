@@ -1,7 +1,6 @@
 package com.authentication.server.config;
 
 import com.authentication.server.security.JwtKeyManager;
-import com.authentication.server.service.UserService;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -31,13 +30,12 @@ public class JwtCryptoConfig {
     }
 
     @Bean
-    public JwtDecoder jwtDecoder(JwtKeyManager jwtKeyManager, JwtProperties jwtProperties, UserService userService) {
+    public JwtDecoder jwtDecoder(JwtKeyManager jwtKeyManager, JwtProperties jwtProperties) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(jwtKeyManager.getPublicKey()).build();
 
         OAuth2TokenValidator<Jwt> issuerAndTimestamps = JwtValidators.createDefaultWithIssuer(jwtProperties.getIssuer());
         OAuth2TokenValidator<Jwt> audience = new JwtAudienceValidator(jwtProperties.getAudience());
-        OAuth2TokenValidator<Jwt> validAfter = new JwtValidAfterValidator(userService);
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuerAndTimestamps, audience, validAfter));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuerAndTimestamps, audience));
 
         return decoder;
     }

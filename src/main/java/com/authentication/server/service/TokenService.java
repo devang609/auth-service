@@ -31,7 +31,7 @@ public class TokenService {
         String issuer = requireIssuer();
         String audience = requireAudience();
 
-        Instant issuedAt = computeIssuedAt(user);
+        Instant issuedAt = computeIssuedAt();
         Instant exp = issuedAt.plusMillis(jwtProperties.getAccessTokenExpiry());
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -60,7 +60,7 @@ public class TokenService {
         String issuer = requireIssuer();
         String audience = requireAudience();
 
-        Instant issuedAt = computeIssuedAt(user);
+        Instant issuedAt = computeIssuedAt();
         Instant exp = issuedAt.plusMillis(jwtProperties.getRefreshTokenExpiry());
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -132,12 +132,7 @@ public class TokenService {
         return audience;
     }
 
-    private static Instant computeIssuedAt(User user) {
-        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
-        Instant validAfter = user.getTokenValidAfter() == null
-                ? Instant.EPOCH
-                : user.getTokenValidAfter().truncatedTo(ChronoUnit.SECONDS);
-
-        return now.isBefore(validAfter) ? validAfter : now;
+    private static Instant computeIssuedAt() {
+        return Instant.now().truncatedTo(ChronoUnit.SECONDS);
     }
 }

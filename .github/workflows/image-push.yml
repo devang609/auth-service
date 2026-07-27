@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "src/**"
+      - "pom.xml"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/image-push.yml"
   workflow_dispatch:
 
 permissions:
@@ -44,5 +50,6 @@ jobs:
         with:
           context: .
           push: true
+          no-cache: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

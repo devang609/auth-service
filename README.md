@@ -2,6 +2,14 @@
 
 Ready-to-use Spring Boot authentication service with JWT-RSA access-refresh token pairs and a JWKS endpoint.
 
+## Innovative Design Decisions
+
+- **Split token transport:** access tokens are returned in the response body and sent as `Authorization: Bearer ...`; refresh tokens stay in an `HttpOnly` cookie. This keeps API authorization explicit while protecting the long-lived token from JavaScript access.
+- **Cookie-backed CSRF protection:** Spring writes a readable `XSRF-TOKEN` cookie, and the frontend echoes it in `X-XSRF-TOKEN` for refresh/logout. The server compares the header with the cookie value without storing CSRF tokens server-side.
+- **No refresh-token rotation:** refresh keeps the same refresh token until it expires. Rotation needs server-side token-family storage and replay detection; this service avoids that state to stay operationally simple.
+- **Logout clears only the browser cookie:** logout does not revoke every already-issued access token. Short access-token expiry is the revocation window, which avoids a token blacklist or per-user `valid_after` lookup on every request.
+- **No per-device session list:** multiple logged-in clients are just independent refresh cookies in different browsers/devices. The server does not track devices because there is no session table.
+
 ## Features
 
 - Email/password signup and login
@@ -23,6 +31,37 @@ Flow:
 4. The client sends the access token as `Authorization: Bearer <token>` to protected APIs.
 5. When the access token expires, the client calls `POST /api/auth/refresh`; the browser sends the refresh cookie, and the service returns a new access token.
 6. On logout, the service clears the refresh cookie. Already-issued access tokens naturally expire.
+
+```mermaid
+flowchart TD
+    subgraph Login["Signup or login"]
+        A["POST /api/auth/signup or /login"] --> B["Auth service validates user"]
+        B --> C["Access token returned in JSON"]
+        B --> D["Refresh token saved as HttpOnly cookie"]
+        B --> E["CSRF token saved as XSRF-TOKEN cookie"]
+    end
+
+    C --> F["Client sends access token as Authorization header"]
+
+    subgraph Refresh["When access token expires"]
+        D --> G["Browser sends refresh_token cookie"]
+        E --> H["Frontend sends X-XSRF-TOKEN header"]
+        G --> I["POST /api/auth/refresh"]
+        H --> I
+        I --> J["New access token returned in JSON"]
+    end
+
+    J --> F
+
+    subgraph Logout["When user logs out"]
+        D --> K["Browser sends refresh_token cookie"]
+        E --> L["Frontend sends X-XSRF-TOKEN header"]
+        K --> M["POST /api/auth/logout"]
+        L --> M
+        M --> N["Server clears refresh_token cookie"]
+        N --> O["Old access tokens expire naturally"]
+    end
+```
 
 This differs from session-store or refresh-token-table designs because token validity is proven cryptographically instead of by database lookup. Downstream services can validate access tokens with the public JWKS endpoint without calling this auth service for every request.
 
@@ -116,6 +155,35 @@ Windows PowerShell:
 ```
 
 By default, profile is controlled by `SPRING_PROFILES_ACTIVE`.
+
+### Run from a GitHub Release `.jar`
+
+Download the released `.jar` file from the GitHub release notes page, then place it beside a filled `.env` file:
+
+```text
+auth-service.jar
+.env
+```
+
+Apply the migration from Database Setup first.
+
+Run the uploaded jar:
+
+```bash
+java -jar auth-service.jar
+```
+
+The app imports `./.env` automatically from the current working directory. For production:
+
+```bash
+java -jar auth-service.jar --spring.profiles.active=prod
+```
+
+Then check:
+
+```bash
+curl http://localhost:8080/api/health
+```
 
 ## Run with Docker
 

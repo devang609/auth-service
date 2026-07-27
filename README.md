@@ -1,6 +1,6 @@
 # Auth Service
 
-Simple Spring Boot authentication service with JWT access tokens, refresh-token cookies, and a JWKS endpoint.
+Ready-to-use Spring Boot authentication service with JWT-RSA access-refresh token pairs and a JWKS endpoint.
 
 ## Features
 
@@ -10,6 +10,39 @@ Simple Spring Boot authentication service with JWT access tokens, refresh-token 
 - Token refresh and logout endpoints
 - Public JWKS endpoint for downstream services
 - OpenAPI + Swagger UI (available in dev when `springdoc` dependency is enabled; disabled by default in prod)
+
+## Application Flow and Design Rationale
+
+This service keeps the auth server stateless for token handling: it issues signed JWT access and refresh tokens, but does not store token values, refresh sessions, or token revocation state in the database.
+
+Flow:
+
+1. The client signs up or logs in with email/password.
+2. The service validates the user and returns a short-lived access token in the response body.
+3. The service also sets the refresh token as an `HttpOnly` cookie.
+4. The client sends the access token as `Authorization: Bearer <token>` to protected APIs.
+5. When the access token expires, the client calls `POST /api/auth/refresh`; the browser sends the refresh cookie, and the service returns a new access token.
+6. On logout, the service clears the refresh cookie. Already-issued access tokens naturally expire.
+
+This differs from session-store or refresh-token-table designs because token validity is proven cryptographically instead of by database lookup. Downstream services can validate access tokens with the public JWKS endpoint without calling this auth service for every request.
+
+The main design constraint is no token-related persistence. That keeps the service simpler and more robust operationally: no token table hot path, no server-side session cleanup job, no database dependency for every token validation, and fewer failure modes during traffic spikes. A valid signed token remains usable until its expiry, so short access-token lifetimes are important.
+
+Trade-offs:
+
+- Logout is cookie cleanup, not immediate global revocation of every already-issued access token.
+- Refresh tokens are not rotated server-side because there is no stored refresh-token family to track.
+- Account-wide forced logout or per-device session management would require adding token/session persistence.
+- Security relies on short access-token expiry, protected refresh cookies, HTTPS, strict CORS, CSRF protection, and key management.
+
+Client responsibilities:
+
+- Store the access token only in memory or another short-lived client location.
+- Send access tokens using the `Authorization` header.
+- Include credentials when calling refresh/logout endpoints so the refresh cookie is sent.
+- Send the `X-XSRF-TOKEN` header for refresh/logout.
+- Handle `401` by refreshing once, retrying the original request, then sending the user back to login if refresh fails.
+- Treat logout as local session end plus refresh-cookie clearing; do not assume old access tokens are revoked before expiry.
 
 ## Tech Stack
 
@@ -35,16 +68,28 @@ Simple Spring Boot authentication service with JWT access tokens, refresh-token 
 - Maven (or use Maven Wrapper)
 - PostgreSQL (Supabase or self-hosted)
 
+## Database Setup
+
+Apply the SQL migration before running with the `prod` profile:
+
+```bash
+psql "$DATABASE_URL" -f migrations/001_create_users.sql
+```
+
+The `dev` profile can still use Hibernate `ddl-auto=update`, but [migrations/001_create_users.sql](migrations/001_create_users.sql) is the portable schema source for fresh clones.
+
 ## Environment Setup
 
 1. Copy [.env.example](.env.example) to `.env`.
 2. Fill all values.
-3. Ensure JWT key values are external raw PEM URLs:
+3. Apply [migrations/001_create_users.sql](migrations/001_create_users.sql) to your database.
+4. Ensure JWT key values are configured:
 	 - `JWT_PRIVATE_KEY_PATH`
 	 - `JWT_PUBLIC_KEY_PATH`
 
 Important:
-- The service currently fetches keys over HTTP(S) from those URLs.
+- In `prod`, JWT keys must be external raw PEM HTTP(S) URLs.
+- In `dev`, JWT keys may be HTTP(S) URLs, local paths, `file:` URLs, or raw PEM values.
 - Do not commit `.env`.
 - Local `spring-boot:run` does **not** automatically load `.env` (the `spring.config.import` line is commented out in [src/main/resources/application.properties](src/main/resources/application.properties)).
 	- For `prod`, it is imported automatically or import it by custom Docker run command. For `dev`, uncomment `spring.config.import=optional:file:./.env[.properties]`.
@@ -215,7 +260,7 @@ Successful auth endpoints return:
 {
 	"access_token": "<jwt>",
 	"token_type": "Bearer",
-	"expires_in": 900
+	"expires_in": 600
 }
 ```
 
@@ -234,24 +279,24 @@ Successful auth endpoints return:
 
 ## Security Configuration (Current Behavior)
 
-- **Token transport:** access token is accepted from the `access_token` cookie first, then falls back to `Authorization: Bearer ...` (see `CookieBearerTokenResolver`).
-- **Cookies:** both refresh and access cookies are `HttpOnly=true`; `Secure`, `SameSite`, `Path`, and `Max-Age` are driven by configuration.
+- **Token transport:** access tokens are returned in the response body and accepted via `Authorization: Bearer ...`; they are not set as cookies.
+- **Cookies:** refresh tokens are set as `HttpOnly=true`, `Secure=true`, `SameSite=Strict`, with path and max-age driven by configuration.
+- **Refresh behavior:** `POST /api/auth/refresh` only reads the refresh token from the cookie, returns a new access token, and does not rotate the refresh token.
 - **CSRF:** enabled via `CookieCsrfTokenRepository` (SPA reads `XSRF-TOKEN` cookie and sends `X-XSRF-TOKEN` header). CSRF is bypassed only for `POST /api/auth/login` and `POST /api/auth/signup`; refresh/logout still require CSRF.
 - **CORS:** credentials allowed; `Set-Cookie` exposed; allowed methods are `GET, POST, OPTIONS`; allowed headers include `Content-Type`, `Authorization`, and `X-XSRF-TOKEN`.
 - **Public endpoints:** `/api/health`, `/.well-known/jwks.json`, Swagger/OpenAPI paths, and auth endpoints are public; all other endpoints require authentication.
-- **JWT validation:** issuer (`jwt.issuer`) and audience (`jwt.audience`) are validated, and tokens are rejected if revoked via `token_valid_after`.
+- **JWT validation:** issuer (`jwt.issuer`), audience (`jwt.audience`), and expiry are validated. Token values and token revocation state are not persisted.
 
 ## Configuration Reference (Key Security/Runtime Settings)
 
 These are configured via Spring properties mapped from environment variables in [src/main/resources/application.properties](src/main/resources/application.properties) and exemplified in [.env.example](.env.example):
 
-- JWT keys: `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` (HTTP(S) raw PEM URLs)
+- JWT keys: `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` (`prod`: HTTP(S) raw PEM URLs; `dev`: HTTP(S), local path, `file:` URL, or raw PEM)
 - JWT claims/expiry: `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ACCESS_TOKEN_EXPIRY_MS`, `JWT_REFRESH_TOKEN_EXPIRY_MS`
 - Allowed signup roles: `AUTH_ALLOWED_ROLES`
 - CORS: `CORS_ALLOWED_ORIGINS` (supports `*`)
 - Cookie controls:
 	- Refresh: `REFRESH_TOKEN_COOKIE_NAME`, `REFRESH_TOKEN_COOKIE_PATH`, `REFRESH_TOKEN_COOKIE_MAX_AGE`, `REFRESH_TOKEN_COOKIE_SECURE`, `REFRESH_TOKEN_COOKIE_SAME_SITE`
-	- Access: `ACCESS_TOKEN_COOKIE_NAME`, `ACCESS_TOKEN_COOKIE_PATH`, `ACCESS_TOKEN_COOKIE_MAX_AGE`, `ACCESS_TOKEN_COOKIE_SECURE`, `ACCESS_TOKEN_COOKIE_SAME_SITE`
 
 Not everything security-related is `.env` controlled (for example: the CSRF bypass rules, which endpoints are `permitAll`, and the fixed CORS method/header allowlist are defined in code in `SecurityConfig`).
 

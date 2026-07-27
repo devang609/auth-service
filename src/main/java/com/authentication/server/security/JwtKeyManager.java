@@ -8,6 +8,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -33,6 +36,7 @@ public class JwtKeyManager {
             .build();
 
     private final JwtProperties jwtProperties;
+    private final Environment environment;
 
     @Getter
     private PrivateKey privateKey;
@@ -56,13 +60,13 @@ public class JwtKeyManager {
         }
 
         try {
-            String publicKeyUrl = jwtProperties.getPublicKeyPath().trim();
-            String privateKeyUrl = jwtProperties.getPrivateKeyPath().trim();
+            String publicKeyLocation = jwtProperties.getPublicKeyPath().trim();
+            String privateKeyLocation = jwtProperties.getPrivateKeyPath().trim();
 
-            byte[] publicDer = readPemDerBytesFromUrl(publicKeyUrl, "PUBLIC KEY");
+            byte[] publicDer = readPemDerBytes(publicKeyLocation, "PUBLIC KEY", isDevProfile());
             this.publicKey = (RSAPublicKey) readPublicKey(publicDer);
 
-            byte[] privateDer = readPemDerBytesFromUrl(privateKeyUrl, "PRIVATE KEY");
+            byte[] privateDer = readPemDerBytes(privateKeyLocation, "PRIVATE KEY", isDevProfile());
             this.privateKey = readPrivateKey(privateDer);
 
             this.kid = computeKid(publicDer);
@@ -73,6 +77,42 @@ public class JwtKeyManager {
             }
             throw new IllegalStateException("Failed to load JWT RSA keys", e);
         }
+    }
+
+    private boolean isDevProfile() {
+        return Arrays.asList(environment.getActiveProfiles()).contains("dev");
+    }
+
+    private static byte[] readPemDerBytes(String location, String pemLabel, boolean allowLocalDevKeys) throws IOException, InterruptedException {
+        if (isHttpUrl(location)) {
+            return readPemDerBytesFromUrl(location, pemLabel);
+        }
+
+        if (!allowLocalDevKeys) {
+            throw new IllegalStateException("JWT key location must use HTTP or HTTPS outside dev: " + location);
+        }
+
+        if (location.startsWith("file:")) {
+            return parsePem(Files.readString(Path.of(URI.create(location)), StandardCharsets.US_ASCII), location, pemLabel);
+        }
+
+        if (location.contains("-----BEGIN " + pemLabel + "-----")) {
+            return parsePem(location.replace("\\n", "\n"), "raw " + pemLabel, pemLabel);
+        }
+
+        return parsePem(Files.readString(Path.of(location), StandardCharsets.US_ASCII), location, pemLabel);
+    }
+
+    private static boolean isHttpUrl(String location) {
+        URI uri;
+        try {
+            uri = URI.create(location);
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+
+        String scheme = uri.getScheme();
+        return scheme != null && (scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"));
     }
 
     private static byte[] readPemDerBytesFromUrl(String location, String pemLabel) throws IOException, InterruptedException {
@@ -98,7 +138,10 @@ public class JwtKeyManager {
             throw new IllegalStateException("Failed to fetch JWT key from URL: " + location + " (status " + response.statusCode() + ")");
         }
 
-        String pem = response.body();
+        return parsePem(response.body(), location, pemLabel);
+    }
+
+    private static byte[] parsePem(String pem, String location, String pemLabel) {
         String begin = "-----BEGIN " + pemLabel + "-----";
         String end = "-----END " + pemLabel + "-----";
 

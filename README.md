@@ -1,4 +1,15 @@
-# Auth Service
+<div align="center">
+
+<pre>
+    _   _                               _
+  __ _ _   _| |_| |__        ___  ___ _ ____   _(_) ___ ___
+ / _` | | | | __| '_ \_____ / __|/ _ \ '__\ \ / / |/ __/ _ \
+| (_| | |_| | |_| | | |_____\__ \  __/ |   \ V /| | (_|  __/
+ \__,_|\__,_|\__|_| |_|     |___/\___|_|    \_/ |_|\___\___|
+</pre>
+
+</div>
+
 
 Ready-to-use Spring Boot authentication service with RSA-signed JWT access/refresh token pairs and a public JWKS endpoint.
 

@@ -1,5 +1,3 @@
-# Configuration
-
 Configuration is mapped from Spring properties and environment variables.
 
 ## Profiles

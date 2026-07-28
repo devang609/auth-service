@@ -1,5 +1,3 @@
-# Security Model
-
 For the design rationale behind this stateless approach, see [Minimal Token Persistence](Minimal-Token-Persistence).
 
 ## Token Transport

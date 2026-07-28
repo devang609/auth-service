@@ -1,5 +1,3 @@
-# API Guide
-
 Base URL locally:
 
 ```text

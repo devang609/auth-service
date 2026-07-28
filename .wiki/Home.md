@@ -1,5 +1,3 @@
-# Auth Service Wiki
-
 Auth Service is a Spring Boot authentication server for email/password login with RSA-signed JWT access tokens, refresh tokens in an HttpOnly cookie, and a public JWKS endpoint.
 
 ## Quick Links

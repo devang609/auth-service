@@ -1,5 +1,3 @@
-# Local Setup
-
 ## Requirements
 
 - JDK 17+

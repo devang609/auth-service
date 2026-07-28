@@ -1,5 +1,3 @@
-# Minimal Token Persistence
-
 Can authentication stay secure with minimal token-related persistence? This service answers yes, with a few explicit trade-offs.
 
 ## Access Token in the Response, Refresh Token in an HttpOnly Cookie

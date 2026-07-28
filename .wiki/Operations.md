@@ -1,5 +1,3 @@
-# Operations
-
 ## Build
 
 ```bash

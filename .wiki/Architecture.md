@@ -1,5 +1,3 @@
-# Architecture
-
 ## Runtime Shape
 
 ```mermaid

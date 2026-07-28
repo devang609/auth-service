@@ -1,5 +1,3 @@
-# Project Status and Roadmap
-
 ## Current Status
 
 The service is functional as a stateless JWT auth server.
